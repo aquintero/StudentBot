@@ -1,5 +1,5 @@
 from keras.models import Model
-from keras.layers import Input, Dense
+from keras.layers import Input, Dense, Lambda
 from keras import backend as K
 from keras.optimizers import Adam
 from collections import namedtuple
@@ -49,17 +49,19 @@ class PPOModel:
     def __init__(self, state_dim, action_dim, hidden_dim=256, hidden_layers=2, lr=0.0005, clip = 0.2, value_scale=0.1, entropy_scale=0.01):
         state = Input(shape=(state_dim,))
         advantage = Input(shape=(1,))
+        action = Input(shape=(1,))
         
         x = state
         for i in range(hidden_layers):
             x = Dense(hidden_dim, activation='relu')(x)
         policy = Dense(action_dim, activation='softmax')(x)
         value = Dense(1)(x)
-        
-        self.model_train = Model(inputs=[state, advantage, old_policy], outputs=[policy, value])
         self.model_pred = Model(inputs=[state], outputs=[policy, value])
         
-        def ppo_loss(advantage):
+        masked_policy = Lambda(lambda x: K.gather(x, action, ))(policy)
+        self.model_train = Model(inputs=[state, action, advantage], outputs=[masked_policy, value])
+        
+        def ppo_loss(advantage, action):
             def loss(y_true, y_pred):
                 r = y_pred/(y_true + 1e-10)
                 return -K.mean(K.minimum(r * advantage, K.clip(r, min_value=1-clip, max_value=1+clip) * advantage)) + entropy_scale * (prob * K.log(prob + 1e-10))
